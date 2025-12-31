@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, FormEvent, useTransition, useRef, useEffect } from "react";
+import { subscribeToWaitlist } from "@/actions/subscribe";
 
 interface EmailFormProps {
   placeholder?: string;
@@ -18,45 +19,45 @@ export function EmailForm({
   className = "",
 }: EmailFormProps) {
   const [email, setEmail] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState("");
+  const [isPending, startTransition] = useTransition();
+  const successTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clean up timeout on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (successTimeoutRef.current) {
+        clearTimeout(successTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
-    setIsSubmitting(true);
 
-    try {
-      const response = await fetch("/api/mailchimp/subscribe", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email }),
-      });
+    startTransition(async () => {
+      try {
+        const result = await subscribeToWaitlist(email);
 
-      const data = await response.json();
+        if (!result.success) {
+          setError(result.message);
+          return;
+        }
 
-      if (!response.ok) {
-        setError(data.message || "Something went wrong");
-        setIsSubmitting(false);
-        return;
+        // Success!
+        setIsSuccess(true);
+        setEmail("");
+
+        // Reset success state after 3 seconds
+        successTimeoutRef.current = setTimeout(() => {
+          setIsSuccess(false);
+        }, 3000);
+      } catch {
+        setError("Something went wrong. Please try again.");
       }
-
-      // Success!
-      setIsSuccess(true);
-      setEmail("");
-
-      // Reset success state after 3 seconds
-      setTimeout(() => {
-        setIsSuccess(false);
-      }, 3000);
-    } catch {
-      setError("Network error. Please try again.");
-    } finally {
-      setIsSubmitting(false);
-    }
+    });
   };
 
   return (
@@ -70,7 +71,7 @@ export function EmailForm({
         onChange={(e) => setEmail(e.target.value)}
         placeholder={placeholder}
         required
-        disabled={isSubmitting || isSuccess}
+        disabled={isPending || isSuccess}
         aria-label="Email address"
         aria-required="true"
         aria-invalid={!!error}
@@ -79,14 +80,14 @@ export function EmailForm({
       />
       <button
         type="submit"
-        disabled={isSubmitting || isSuccess}
+        disabled={isPending || isSuccess}
         className={`btn-shine whitespace-nowrap rounded-lg px-7 py-[14px] text-[15px] font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
           isSuccess
             ? "bg-green-dark text-slate-950"
             : "bg-green text-slate-950 hover:-translate-y-0.5 hover:bg-green-dark hover:shadow-[0_4px_12px_var(--green-glow)] active:translate-y-0"
         }`}
       >
-        {isSuccess ? "You're in!" : isSubmitting ? "Joining..." : submitText}
+        {isSuccess ? "You're in!" : isPending ? "Joining..." : submitText}
       </button>
 
       {showNote && (
