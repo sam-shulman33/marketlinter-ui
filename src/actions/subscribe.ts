@@ -4,48 +4,6 @@ import { getMailerLiteClient, getGroupId } from "@/lib/mailerlite";
 import { subscribeSchema } from "@/lib/schemas/subscribe";
 import { env } from "@/env";
 
-// Simple in-memory rate limiting (resets on server restart)
-const rateLimitMap = new Map<string, { count: number; timestamp: number }>();
-const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
-const RATE_LIMIT_MAX_REQUESTS = 5; // 5 requests per minute per IP
-const CLEANUP_INTERVAL = 5 * 60 * 1000; // Clean up every 5 minutes
-let lastCleanup = Date.now();
-
-function cleanupStaleEntries(): void {
-  const now = Date.now();
-  // Only run cleanup periodically to avoid overhead on every request
-  if (now - lastCleanup < CLEANUP_INTERVAL) return;
-
-  lastCleanup = now;
-  for (const [key, record] of rateLimitMap) {
-    if (now - record.timestamp > RATE_LIMIT_WINDOW) {
-      rateLimitMap.delete(key);
-    }
-  }
-}
-
-function isRateLimited(identifier: string): boolean {
-  const now = Date.now();
-
-  // Periodically clean up stale entries to prevent memory leak
-  cleanupStaleEntries();
-
-  const record = rateLimitMap.get(identifier);
-
-  if (!record || now - record.timestamp > RATE_LIMIT_WINDOW) {
-    rateLimitMap.set(identifier, { count: 1, timestamp: now });
-    return false;
-  }
-
-  if (record.count >= RATE_LIMIT_MAX_REQUESTS) {
-    return true;
-  }
-
-  record.count++;
-  return false;
-}
-
-
 export interface SubscribeResult {
   success: boolean;
   message: string;
@@ -57,14 +15,6 @@ export interface SubscribeResult {
  */
 export async function subscribeToWaitlist(email: string): Promise<SubscribeResult> {
   try {
-    // Rate limiting using email as identifier (since we don't have IP in server actions easily)
-    if (isRateLimited(email)) {
-      return {
-        success: false,
-        message: "Too many requests. Please try again in a minute.",
-      };
-    }
-
     // Validate email with Zod
     const result = subscribeSchema.safeParse({ email });
 
