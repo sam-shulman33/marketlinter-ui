@@ -1,6 +1,8 @@
 "use server";
 
 import { getMailerLiteClient, getGroupId } from "@/lib/mailerlite";
+import { subscribeSchema } from "@/lib/schemas/subscribe";
+import { env } from "@/env";
 
 // Simple in-memory rate limiting (resets on server restart)
 const rateLimitMap = new Map<string, { count: number; timestamp: number }>();
@@ -43,8 +45,6 @@ function isRateLimited(identifier: string): boolean {
   return false;
 }
 
-// Email validation regex
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export interface SubscribeResult {
   success: boolean;
@@ -65,22 +65,18 @@ export async function subscribeToWaitlist(email: string): Promise<SubscribeResul
       };
     }
 
-    // Validate email
-    if (!email || typeof email !== "string") {
+    // Validate email with Zod
+    const result = subscribeSchema.safeParse({ email });
+
+    if (!result.success) {
       return {
         success: false,
-        message: "Please enter a valid email address.",
+        message: result.error.issues[0]?.message ?? "Please enter a valid email address.",
       };
     }
 
-    const sanitizedEmail = email.trim().toLowerCase();
-
-    if (!EMAIL_REGEX.test(sanitizedEmail) || sanitizedEmail.length > 254) {
-      return {
-        success: false,
-        message: "Please enter a valid email address.",
-      };
-    }
+    // Email is already sanitized (trimmed, lowercased) by Zod transform
+    const sanitizedEmail = result.data.email;
 
     // Get MailerLite client
     const client = getMailerLiteClient();
@@ -88,7 +84,7 @@ export async function subscribeToWaitlist(email: string): Promise<SubscribeResul
     if (!client) {
       console.error("MailerLite API key not configured");
       // In development, return success so form can be tested
-      if (process.env.NODE_ENV === "development") {
+      if (env.NODE_ENV === "development") {
         console.log("Development mode: Simulating successful subscription for", sanitizedEmail);
         return {
           success: true,
