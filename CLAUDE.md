@@ -781,3 +781,576 @@ npx @next/codemod@canary middleware-to-proxy .
 | API Route | `route.ts` | HTTP endpoints |
 | Error Boundary | `error.tsx` | Error handling UI |
 | Loading State | `loading.tsx` | Suspense fallback |
+
+---
+
+## Zod v4 Validation
+
+TypeScript-first schema validation library. Zod v4 offers 14x faster string parsing, 6.5x faster object parsing, and 100x reduction in TypeScript type instantiations.
+
+### 1. Setup and Configuration
+
+**Installation:**
+```bash
+npm install zod
+```
+
+**Requirements:**
+- TypeScript 5.5+ required
+- Must enable `"strict": true` in tsconfig.json
+- Zero external dependencies (~2kb gzipped)
+
+**Basic Import:**
+```tsx
+import { z } from 'zod'
+```
+
+### 2. Core Schema Types
+
+**Primitives:**
+```tsx
+z.string()      // string
+z.number()      // number
+z.bigint()      // bigint
+z.boolean()     // boolean
+z.date()        // Date
+z.undefined()   // undefined
+z.null()        // null
+z.any()         // any
+z.unknown()     // unknown
+```
+
+**Objects:**
+```tsx
+const UserSchema = z.object({
+  name: z.string(),
+  email: z.string().email(),
+  age: z.number().int().positive(),
+})
+
+type User = z.infer<typeof UserSchema>
+// { name: string; email: string; age: number }
+```
+
+**Arrays and Tuples:**
+```tsx
+z.array(z.string())              // string[]
+z.string().array()               // string[] (equivalent)
+z.tuple([z.string(), z.number()]) // [string, number]
+```
+
+**Unions and Enums:**
+```tsx
+// Union types
+z.union([z.string(), z.number()])  // string | number
+z.string().or(z.number())          // string | number
+
+// Enums
+z.enum(['admin', 'user', 'guest'])
+type Role = z.infer<typeof RoleSchema>  // 'admin' | 'user' | 'guest'
+
+// Literal
+z.literal('active')  // exactly 'active'
+
+// Multiple literals (new in v4)
+z.literal(['active', 'inactive'])  // 'active' | 'inactive'
+```
+
+**Modifiers:**
+```tsx
+z.string().optional()   // string | undefined
+z.string().nullable()   // string | null
+z.string().nullish()    // string | null | undefined
+z.string().default('hello')  // defaults to 'hello' if undefined
+```
+
+### 3. Parsing and Type Inference
+
+**parse() vs safeParse():**
+```tsx
+const schema = z.string().email()
+
+// parse() - throws on error (use for trusted data)
+try {
+  const email = schema.parse(input)
+} catch (error) {
+  // ZodError thrown
+}
+
+// safeParse() - returns result object (RECOMMENDED for APIs/forms)
+const result = schema.safeParse(input)
+if (result.success) {
+  console.log(result.data)  // typed as string
+} else {
+  console.log(result.error)  // ZodError
+}
+```
+
+**Type Inference:**
+```tsx
+const UserSchema = z.object({
+  id: z.string().uuid(),
+  email: z.string().email(),
+  createdAt: z.date(),
+})
+
+// Infer the type from the schema
+type User = z.infer<typeof UserSchema>
+
+// Use for function parameters
+function createUser(data: z.infer<typeof UserSchema>) {
+  // data is fully typed
+}
+```
+
+**Async Parsing (for async refinements/transforms):**
+```tsx
+const result = await schema.safeParseAsync(input)
+```
+
+### 4. Validation and Transforms
+
+**String Validators:**
+```tsx
+z.string().min(1)                 // minimum length
+z.string().max(100)               // maximum length
+z.string().length(5)              // exact length
+z.string().email()                // email format
+z.string().url()                  // URL format
+z.string().uuid()                 // UUID format
+z.string().regex(/^[a-z]+$/)      // custom regex
+z.string().startsWith('https')    // starts with
+z.string().endsWith('.com')       // ends with
+z.string().trim()                 // trim whitespace
+z.string().toLowerCase()          // convert to lowercase
+```
+
+**Number Validators:**
+```tsx
+z.number().int()        // integer only
+z.number().positive()   // > 0
+z.number().negative()   // < 0
+z.number().nonnegative() // >= 0
+z.number().min(5)       // >= 5
+z.number().max(100)     // <= 100
+z.number().finite()     // not Infinity
+z.number().safe()       // safe integer range
+```
+
+**Coercion (auto-convert types):**
+```tsx
+// Coerce to primitives (great for form data, query params)
+z.coerce.string()   // converts any input to string
+z.coerce.number()   // converts '42' → 42
+z.coerce.boolean()  // converts 'true' → true
+z.coerce.date()     // converts '2024-01-01' → Date
+
+// Safe coercion pattern with pipe
+const datelike = z.union([z.number(), z.string(), z.date()])
+const safeDate = datelike.pipe(z.coerce.date())
+```
+
+**Transforms:**
+```tsx
+// Transform values after validation
+const schema = z.string().transform(val => val.toUpperCase())
+schema.parse('hello')  // 'HELLO'
+
+// Chain with pipe
+const percentSchema = z.string()
+  .transform(val => parseFloat(val))
+  .pipe(z.number().min(0).max(100))
+```
+
+**Refinements (custom validation):**
+```tsx
+// Simple refinement
+const passwordSchema = z.string().refine(
+  val => val.length >= 8 && /[A-Z]/.test(val),
+  { message: 'Password must be 8+ chars with uppercase' }
+)
+
+// superRefine for complex validation
+const formSchema = z.object({
+  password: z.string(),
+  confirm: z.string(),
+}).superRefine((data, ctx) => {
+  if (data.password !== data.confirm) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'Passwords must match',
+      path: ['confirm'],
+    })
+  }
+})
+```
+
+### 5. Object Schema Methods
+
+**Extending and Merging:**
+```tsx
+const BaseUser = z.object({ name: z.string() })
+
+// Extend (add fields)
+const AdminUser = BaseUser.extend({
+  role: z.literal('admin'),
+  permissions: z.array(z.string()),
+})
+
+// Merge (combine objects)
+const WithTimestamps = z.object({ createdAt: z.date() })
+const User = BaseUser.merge(WithTimestamps)
+```
+
+**Pick and Omit:**
+```tsx
+const FullUser = z.object({
+  id: z.string(),
+  name: z.string(),
+  email: z.string(),
+  password: z.string(),
+})
+
+// Pick specific fields
+const PublicUser = FullUser.pick({ id: true, name: true })
+
+// Omit specific fields
+const UserInput = FullUser.omit({ id: true })
+```
+
+**Partial and Required:**
+```tsx
+const schema = z.object({
+  name: z.string(),
+  email: z.string(),
+})
+
+// All fields optional
+const partialSchema = schema.partial()
+
+// Deep partial (nested objects too)
+const deepPartial = schema.deepPartial()
+
+// Make optional fields required
+const requiredSchema = partialSchema.required()
+```
+
+**Unknown Keys Handling:**
+```tsx
+const schema = z.object({ name: z.string() })
+
+schema.strict()      // error on unknown keys
+schema.passthrough() // keep unknown keys in output
+schema.strip()       // remove unknown keys (default)
+```
+
+### 6. Error Handling
+
+**prettifyError (new in v4):**
+```tsx
+const result = schema.safeParse(input)
+if (!result.success) {
+  console.log(z.prettifyError(result.error))
+  // ✖ Invalid input: expected string, received number
+  //   → at username
+  // ✖ Too small: expected number to be >=0
+  //   → at age
+}
+```
+
+**Custom Error Messages:**
+```tsx
+z.string().min(1, { message: 'Name is required' })
+z.string().email({ message: 'Invalid email address' })
+z.number().max(100, { message: 'Must be 100 or less' })
+```
+
+**Flattening Errors for Forms:**
+```tsx
+const result = schema.safeParse(formData)
+if (!result.success) {
+  const errors = result.error.flatten()
+  // { formErrors: string[], fieldErrors: { [key]: string[] } }
+
+  // Access field-specific errors
+  errors.fieldErrors.email  // ['Invalid email address']
+}
+```
+
+### 7. New v4 Features
+
+**File Validation:**
+```tsx
+const imageSchema = z.file()
+  .min(10_000)              // min 10KB
+  .max(5_000_000)           // max 5MB
+  .mime(['image/png', 'image/jpeg'])
+
+// Use in form validation
+const formSchema = z.object({
+  avatar: imageSchema,
+  documents: z.array(z.file().max(10_000_000)),
+})
+```
+
+**Template Literals:**
+```tsx
+// CSS units
+const cssUnits = z.enum(['px', 'em', 'rem', '%'])
+const cssValue = z.templateLiteral([z.number(), cssUnits])
+// `${number}px` | `${number}em` | `${number}rem` | `${number}%`
+
+// Email pattern with constraints
+const email = z.templateLiteral([
+  z.string().min(1),
+  '@',
+  z.string().max(64),
+])
+```
+
+**Recursive Objects (no type casting):**
+```tsx
+// Self-referential (v4 pattern with getter)
+const Category = z.object({
+  name: z.string(),
+  get subcategories() {
+    return z.array(Category)
+  },
+})
+
+type Category = z.infer<typeof Category>
+// { name: string; subcategories: Category[] }
+
+// Mutually recursive
+const User = z.object({
+  email: z.string().email(),
+  get posts() { return z.array(Post) },
+})
+
+const Post = z.object({
+  title: z.string(),
+  get author() { return User },
+})
+
+// Full method access on recursive schemas
+Post.pick({ title: true })
+Post.partial()
+Post.extend({ publishedAt: z.date() })
+```
+
+### 8. Environment Variable Validation
+
+**Type-Safe Environment Config:**
+```tsx
+// src/env.ts
+import { z } from 'zod'
+
+const envSchema = z.object({
+  // Server-only
+  DATABASE_URL: z.string().url(),
+  API_SECRET: z.string().min(32),
+
+  // With coercion for numeric values
+  PORT: z.coerce.number().default(3000),
+  RATE_LIMIT: z.coerce.number().positive().default(100),
+
+  // Boolean from string
+  DEBUG: z.string()
+    .transform(val => val === 'true')
+    .default('false'),
+
+  // Enum for environment
+  NODE_ENV: z.enum(['development', 'production', 'test']),
+
+  // Optional with fallback
+  LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
+})
+
+// Validate at startup (fail fast)
+const parsed = envSchema.safeParse(process.env)
+if (!parsed.success) {
+  console.error('❌ Invalid environment variables:')
+  console.error(z.prettifyError(parsed.error))
+  process.exit(1)
+}
+
+export const env = parsed.data
+
+// Type-safe access
+// env.PORT → number
+// env.DATABASE_URL → string
+```
+
+**Usage in Application:**
+```tsx
+import { env } from '@/env'
+
+// Fully typed, validated at startup
+const db = createConnection(env.DATABASE_URL)
+app.listen(env.PORT)
+```
+
+### 9. Next.js Server Actions Integration
+
+**Shared Schema (Single Source of Truth):**
+```tsx
+// lib/schemas/user.ts
+import { z } from 'zod'
+
+export const createUserSchema = z.object({
+  name: z.string().min(1, 'Name is required'),
+  email: z.string().email('Invalid email'),
+  password: z.string()
+    .min(8, 'Password must be at least 8 characters')
+    .regex(/[A-Z]/, 'Password must contain uppercase letter'),
+})
+
+export type CreateUserInput = z.infer<typeof createUserSchema>
+```
+
+**Server Action with Validation:**
+```tsx
+// app/actions/user.ts
+'use server'
+
+import { z } from 'zod'
+import { revalidatePath } from 'next/cache'
+import { createUserSchema } from '@/lib/schemas/user'
+
+export type ActionState = {
+  success: boolean
+  message?: string
+  errors?: Record<string, string[]>
+  data?: Record<string, string>  // Return original values
+}
+
+export async function createUser(
+  prevState: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const raw = {
+    name: formData.get('name'),
+    email: formData.get('email'),
+    password: formData.get('password'),
+  }
+
+  const result = createUserSchema.safeParse(raw)
+
+  if (!result.success) {
+    return {
+      success: false,
+      errors: result.error.flatten().fieldErrors,
+      data: raw as Record<string, string>,  // Return values to repopulate form
+    }
+  }
+
+  try {
+    await db.user.create({ data: result.data })
+    revalidatePath('/users')
+    return { success: true, message: 'User created!' }
+  } catch (error) {
+    return { success: false, message: 'Failed to create user' }
+  }
+}
+```
+
+**Client Form with useActionState:**
+```tsx
+// app/components/CreateUserForm.tsx
+'use client'
+
+import { useActionState } from 'react'
+import { createUser, type ActionState } from '@/app/actions/user'
+import { SubmitButton } from './SubmitButton'
+
+const initialState: ActionState = { success: false }
+
+export function CreateUserForm() {
+  const [state, action] = useActionState(createUser, initialState)
+
+  return (
+    <form action={action}>
+      <div>
+        <input
+          name="name"
+          defaultValue={state.data?.name}
+          placeholder="Name"
+        />
+        {state.errors?.name && (
+          <p className="text-red-500">{state.errors.name[0]}</p>
+        )}
+      </div>
+
+      <div>
+        <input
+          name="email"
+          type="email"
+          defaultValue={state.data?.email}
+          placeholder="Email"
+        />
+        {state.errors?.email && (
+          <p className="text-red-500">{state.errors.email[0]}</p>
+        )}
+      </div>
+
+      <div>
+        <input
+          name="password"
+          type="password"
+          placeholder="Password"
+        />
+        {state.errors?.password && (
+          <p className="text-red-500">{state.errors.password[0]}</p>
+        )}
+      </div>
+
+      <SubmitButton />
+
+      {state.message && (
+        <p className={state.success ? 'text-green-500' : 'text-red-500'}>
+          {state.message}
+        </p>
+      )}
+    </form>
+  )
+}
+```
+
+**Submit Button with Pending State:**
+```tsx
+// app/components/SubmitButton.tsx
+'use client'
+
+import { useFormStatus } from 'react-dom'
+
+export function SubmitButton() {
+  const { pending } = useFormStatus()
+
+  return (
+    <button type="submit" disabled={pending}>
+      {pending ? 'Creating...' : 'Create User'}
+    </button>
+  )
+}
+```
+
+### 10. Zod Quick Reference
+
+| Pattern | Example | Description |
+|---------|---------|-------------|
+| Basic string | `z.string()` | String type |
+| With validation | `z.string().email()` | Email format |
+| Optional | `z.string().optional()` | string \| undefined |
+| Nullable | `z.string().nullable()` | string \| null |
+| Default value | `z.string().default('hi')` | Fallback if undefined |
+| Coercion | `z.coerce.number()` | Auto-convert types |
+| Object | `z.object({ name: z.string() })` | Object schema |
+| Array | `z.array(z.string())` | Array of strings |
+| Union | `z.union([z.string(), z.number()])` | Multiple types |
+| Enum | `z.enum(['a', 'b', 'c'])` | Literal union |
+| Transform | `.transform(v => v.trim())` | Modify value |
+| Refine | `.refine(v => v.length > 0)` | Custom validation |
+| Type inference | `z.infer<typeof schema>` | Extract TS type |
+| Safe parse | `schema.safeParse(data)` | Returns result object |
+| Pretty errors | `z.prettifyError(error)` | Human-readable errors |
+| File (v4) | `z.file().max(5_000_000)` | File validation |
