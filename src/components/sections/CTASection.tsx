@@ -105,7 +105,7 @@ export function CTASection({ data }: CTASectionProps) {
         </p>
 
         {/* Email Form */}
-        <div className="fade-in-up mb-4">
+        <div id="waitlist-form" className="fade-in-up mb-4">
           <EmailForm
             placeholder={data.formPlaceholder}
             submitText={data.ctaButtonText}

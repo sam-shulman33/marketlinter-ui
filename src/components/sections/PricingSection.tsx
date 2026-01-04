@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { motion, stagger, useReducedMotion } from "motion/react";
 import type {
   PricingSection as PricingSectionData,
   PricingTier,
@@ -11,39 +11,57 @@ interface PricingSectionProps {
   tiers: PricingTier[];
 }
 
+// Animation variants for staggered card reveal
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      when: "beforeChildren",
+      delayChildren: stagger(0.15),
+    },
+  },
+};
+
+const cardVariants = {
+  hidden: { opacity: 0, y: 30 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      type: "spring" as const,
+      stiffness: 100,
+      damping: 15,
+    },
+  },
+};
+
+const headerVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.5,
+      ease: "easeOut" as const,
+    },
+  },
+};
+
 export function PricingSection({ data, tiers }: PricingSectionProps) {
-  const sectionRef = useRef<HTMLElement>(null);
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add("visible");
-          }
-        });
-      },
-      { threshold: 0.1, rootMargin: "0px 0px -50px 0px" }
-    );
-
-    const section = sectionRef.current;
-    if (section) {
-      const fadeElements = section.querySelectorAll(".fade-in-up, .stagger-children");
-      fadeElements.forEach((el) => observer.observe(el));
-    }
-
-    return () => observer.disconnect();
-  }, []);
+  const shouldReduceMotion = useReducedMotion();
 
   return (
-    <section
-      ref={sectionRef}
-      id="pricing"
-      className="border-t border-slate-800 px-6 py-24"
-    >
+    <section id="pricing" className="border-t border-slate-800 px-6 py-24">
       <div className="mx-auto max-w-[1140px]">
         {/* Header */}
-        <div className="fade-in-up mb-8">
+        <motion.div
+          className="mb-8"
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, margin: "-50px" }}
+          variants={headerVariants}
+        >
           <p className="mb-4 text-xs font-semibold uppercase tracking-[0.1em] text-green">
             {data.label}
           </p>
@@ -53,29 +71,85 @@ export function PricingSection({ data, tiers }: PricingSectionProps) {
 
           {/* Early Access Badge */}
           {data.showEarlyAccessBadge && (
-            <div className="animate-glow mt-8 inline-flex items-center gap-1.5 rounded-full border border-green/30 bg-green/10 px-3 py-1.5 text-xs font-semibold text-green">
+            <motion.div
+              className="mt-8 inline-flex items-center gap-1.5 rounded-full border border-green/30 bg-green/10 px-3 py-1.5 text-xs font-semibold text-green"
+              initial={{ opacity: 0, scale: 0.9 }}
+              whileInView={{ opacity: 1, scale: 1 }}
+              viewport={{ once: true }}
+              transition={{ delay: 0.3, duration: 0.4 }}
+              // Subtle pulse animation
+              animate={
+                shouldReduceMotion
+                  ? {}
+                  : {
+                      boxShadow: [
+                        "0 0 5px rgba(16, 185, 129, 0.2)",
+                        "0 0 20px rgba(16, 185, 129, 0.4)",
+                        "0 0 5px rgba(16, 185, 129, 0.2)",
+                      ],
+                    }
+              }
+              {...(!shouldReduceMotion && {
+                transition: {
+                  boxShadow: {
+                    duration: 2,
+                    repeat: Infinity,
+                    ease: "easeInOut",
+                  },
+                },
+              })}
+            >
               <span>🎉</span>
               {data.earlyAccessBadgeText}
-            </div>
+            </motion.div>
           )}
-        </div>
+        </motion.div>
 
         {/* Pricing Cards Grid */}
-        <div className="stagger-children mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <motion.div
+          className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3"
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, margin: "-100px" }}
+          variants={containerVariants}
+        >
           {tiers.map((tier) => (
-            <div
+            <motion.div
               key={tier._id}
-              className={`relative rounded-xl border p-8 transition-all duration-300 hover:-translate-y-2 hover:shadow-[0_20px_40px_rgba(0,0,0,0.3)] ${
+              variants={cardVariants}
+              whileHover={
+                shouldReduceMotion
+                  ? {}
+                  : {
+                      y: -8,
+                      boxShadow: tier.isFeatured
+                        ? "0 0 60px rgba(16,185,129,0.2), 0 20px 40px rgba(0,0,0,0.3)"
+                        : "0 20px 40px rgba(0,0,0,0.3)",
+                    }
+              }
+              whileTap={shouldReduceMotion ? {} : { scale: 0.98 }}
+              transition={{
+                type: "spring",
+                stiffness: 300,
+                damping: 20,
+              }}
+              className={`relative rounded-xl border p-8 ${
                 tier.isFeatured
-                  ? "border-green bg-slate-900 shadow-[0_0_40px_rgba(16,185,129,0.1)] hover:shadow-[0_0_60px_rgba(16,185,129,0.2),0_20px_40px_rgba(0,0,0,0.3)]"
+                  ? "border-green bg-slate-900 shadow-[0_0_40px_rgba(16,185,129,0.1)]"
                   : "border-slate-800 bg-slate-900"
               }`}
             >
               {/* Featured Badge */}
               {tier.isFeatured && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-green px-3 py-1 text-[11px] font-bold uppercase tracking-[0.05em] text-slate-950">
+                <motion.div
+                  className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-green px-3 py-1 text-[11px] font-bold uppercase tracking-[0.05em] text-slate-950"
+                  initial={{ opacity: 0, y: -10 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: 0.5, type: "spring", stiffness: 200 }}
+                >
                   Most Popular
-                </div>
+                </motion.div>
               )}
 
               {/* Tier Name */}
@@ -97,31 +171,67 @@ export function PricingSection({ data, tiers }: PricingSectionProps) {
               {/* Features */}
               <ul className="mb-7 space-y-2">
                 {tier.features.map((feature, index) => (
-                  <li
+                  <motion.li
                     key={index}
-                    className="flex items-start gap-2.5 text-sm text-slate-300 transition-transform hover:translate-x-1"
+                    className="flex items-start gap-2.5 text-sm text-slate-300"
+                    whileHover={
+                      shouldReduceMotion
+                        ? {}
+                        : { x: 4, transition: { type: "spring", stiffness: 300 } }
+                    }
                   >
                     <span className="flex-shrink-0 font-semibold text-green">
                       ✓
                     </span>
                     {feature}
-                  </li>
+                  </motion.li>
                 ))}
               </ul>
 
               {/* CTA Button */}
-              <button
-                className={`btn-shine block w-full rounded-lg py-3 text-center text-sm font-semibold transition-all ${
+              <motion.button
+                className={`btn-shine block w-full rounded-lg py-3 text-center text-sm font-semibold ${
                   tier.isFeatured
-                    ? "bg-green text-slate-950 hover:-translate-y-0.5 hover:bg-green-dark hover:shadow-[0_4px_12px_var(--green-glow)]"
-                    : "border border-slate-600 bg-transparent text-slate-300 hover:-translate-y-0.5 hover:border-slate-500 hover:bg-slate-800"
+                    ? "bg-green text-slate-950"
+                    : "border border-slate-600 bg-transparent text-slate-300"
                 }`}
+                onClick={() => {
+                  const waitlistForm = document.getElementById("waitlist-form");
+                  if (waitlistForm) {
+                    waitlistForm.scrollIntoView({ behavior: "smooth", block: "center" });
+                    // Focus the email input for better UX
+                    const emailInput = waitlistForm.querySelector<HTMLInputElement>('input[type="email"]');
+                    if (emailInput) {
+                      setTimeout(() => emailInput.focus(), 500);
+                    }
+                  }
+                }}
+                whileHover={
+                  shouldReduceMotion
+                    ? {}
+                    : {
+                        y: -2,
+                        boxShadow: tier.isFeatured
+                          ? "0 4px 12px var(--green-glow)"
+                          : "0 4px 12px rgba(0,0,0,0.2)",
+                        backgroundColor: tier.isFeatured
+                          ? "var(--green-dark)"
+                          : "var(--slate-800)",
+                        borderColor: tier.isFeatured ? undefined : "var(--slate-500)",
+                      }
+                }
+                whileTap={shouldReduceMotion ? {} : { scale: 0.97, y: 0 }}
+                transition={{
+                  type: "spring",
+                  stiffness: 400,
+                  damping: 25,
+                }}
               >
                 {tier.ctaText}
-              </button>
-            </div>
+              </motion.button>
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
       </div>
     </section>
   );
